@@ -31,8 +31,7 @@ Phase 1 must enable authorized users to:
 1.  Identify Properties and Devices that need attention.
 2.  Navigate consistently from Property to Venue to Device.
 3.  Search and inspect the managed Device fleet.
-4.  Review Device health, telemetry, configuration, and diagnostic
-    information.
+4.  Review Device health, telemetry, configuration,information.
 5.  Create and manage reusable Configuration Profiles and
     Configurations.
 6.  Assign Configuration at Property, Venue, or Device scope.
@@ -53,7 +52,7 @@ Phase 1 must enable authorized users to:
 -   Property overview
 -   Venue overview
 -   Fleet-level Device management
--   Individual Device operations and diagnostics
+-   Individual Device operations
 -   Configuration Profiles
 -   Configuration creation and editing
 -   Hierarchical Configuration assignment
@@ -131,7 +130,7 @@ User Role is an administrative classification only. MDU must not derive or calcu
 
 MDU must display and manage these concepts where supported by the backend, but must not implement its own authorization algorithm.
 
-The UI must use **Property** instead of **Entity** for normal user-facing experiences. Backend terminology may appear in technical or diagnostic contexts where required.
+The UI must use **Property** instead of **Entity** for normal user-facing experiences.
 
 ------------------------------------------------------------------------
 
@@ -389,7 +388,6 @@ The Device page must provide the following tabs:
 2.  Radios
 3.  Configuration
 4.  Activity
-5.  Diagnostics
 
 -   **DEV-009:** The Device header must show key identity, connection,
     health, scope, and last-seen information.
@@ -931,21 +929,19 @@ The following items require explicit product or architecture approval before imp
 
 7. Identity-provider behavior for invitation, password setup, MFA, and email validation.
 
-8. Exact diagnostic information exposed through the UI.
+8. What happens when more than one Configuration is assigned at the same scope.
 
-9. What happens when more than one Configuration is assigned at the same scope.
+9. What happens when a Configuration assignment is replaced.
 
-10. What happens when a Configuration assignment is replaced.
+10. What happens when an assignment is removed.
 
-11. What happens when an assignment is removed.
+11. How Property, Venue, and Device assignments are resolved when they define the same field.
 
-12. How Property, Venue, and Device assignments are resolved when they define the same field.
+12. What happens when an assigned Configuration becomes invalid because a referenced Configuration Profile changes.
 
-13. What happens when an assigned Configuration becomes invalid because a referenced Configuration Profile changes.
+13. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
 
-14. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
-
-15. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
+14. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
 
 
 Device deletion behavior, Operator-to-Entity behavior, authorization calculation, and underlying cleanup are backend responsibilities and are not Phase 1 MDU UI decisions.
