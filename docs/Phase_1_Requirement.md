@@ -518,7 +518,7 @@ Venues (including campus buildings, floors, common areas, and individual suites 
   * `entity` (UUID): Property identifier, specified when creating a top-level Venue directly under a Property.
   * `parent` (UUID): Parent Venue identifier, specified when creating a child Venue (e.g., Building → Floor → Suite). The parent Property association is automatically inherited from the parent Venue.
 * `description` (string, optional): Explanatory text describing the Venue.
-* `deviceConfiguration` (UUID, optional): Configuration assigned directly at this scope.
+* `configurations` (UUID[], optional): Array of Configuration identifiers assigned at this Venue scope.
 
 ### Lifecycle & Dependency Rules
 * Deletion of a Venue is dependency-safe: OWPROV disallows deletion while active child Venues or assigned Devices remain.
@@ -652,7 +652,7 @@ To ensure unambiguous validation, uniqueness enforcement, searchability, and bac
 
 ### Lifecycle Operations
 * **Scope Reassignment:** Authorized users can move a device between Venues within an authorized Property by updating its scope binding.
-* **Decommissioning & Deletion:** Unclaiming or deleting a device removes its inventory record from OWPROV and terminates active gateway associations upon explicit confirmation.
+* **Decommissioning & Deletion:** Unclaiming or deleting a device removes its inventory record and associations from OWPROV upon explicit confirmation.
 
 ### Requirements
 
@@ -870,20 +870,16 @@ Configuration assignment and live deployment are separate concepts.
 
 -   **CFG-037:** Deployment results must show the per-Device deployment status and clearly identify Devices that did not complete successfully.
 
--   **CFG-038:** Phase 1 must support the OWGW command states relevant to Configuration deployment:
-    - Pending
-    - Executing
-    - Executed
-    - Completed
-    - Failed
-    - Timed Out
-    - Expired
+-   **CFG-038:** Phase 1 must support and distinguish the OWGW command states relevant to Configuration deployment:
+    - **Active (Non-Terminal):** `Pending` (command queued; for offline devices, queued until gateway connection or command timeout), `Executing` (command in flight to device).
+    - **Terminal Success:** `Executed`, `Completed`.
+    - **Terminal Failure:** `Failed`, `Timed Out`, `Expired`.
 
 -   **CFG-039:** Partial deployment results must summarize Devices by deployment outcome and identify unsuccessful or incomplete Devices.
 
--   **CFG-040:** The UI must allow failed Devices to be retried without redeploying successfully completed Devices unless the user explicitly requests a full redeployment.
+-   **CFG-040:** The UI must allow retries exclusively for Devices in terminal failure states (`Failed`, `Timed Out`, `Expired`), blocking retries while a command is active (`Pending`, `Executing`) to ensure retry safety, without redeploying successfully completed Devices unless the user explicitly requests a full redeployment.
 
--   **CFG-041:** Duplicate deployment submissions for the same Configuration and target must be prevented while an equivalent deployment is already in progress.
+-   **CFG-041:** Duplicate deployment submissions for the same Configuration and target must be prevented by disabling deployment actions while an active deployment (`Pending`, `Executing`) is already in progress. Detailed JSON-RPC command payloads, wire schemas, and socket timeouts are defined in downstream Technical API Interface Specifications.
 
 -   **CFG-042:** Deployment history must be available for the relevant Configuration or Device.
 
