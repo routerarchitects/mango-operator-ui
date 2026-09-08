@@ -638,7 +638,7 @@ Physical network devices (APs, switches, gateways) are claimed and onboarded int
 To ensure unambiguous validation, uniqueness enforcement, searchability, and backend mapping:
 * **Primary Identifier (`serialNumber`):** Every physical device is identified across the platform by its **Serial Number** (`serialNumber`), which is a unique 12-character hexadecimal string (e.g., `24f5a201ab34`).
 * **Input Flexibility & Normalization:** Hardware stickers and barcode scans commonly format the serial number as a continuous string or with standard delimiters (such as colons or hyphens). The onboarding interface accepts the serial number formatted either way and automatically normalizes it into a clean 12-character lowercase hexadecimal string before submitting to inventory.
-* **Validation & Uniqueness:** The Serial Number must be unique across the platform inventory. The onboarding form enforces format validation (exactly 12 hexadecimal characters) and rejects duplicate or invalid serial numbers with immediate, actionable error feedback.
+* **Validation & Uniqueness:** The Serial Number must be unique across the platform inventory. While downstream OpenAPI schemas define serial numbers generically as strings, the authoritative backend runtime strictly enforces 12-character hexadecimal formatting and normalization; the UI validates and normalizes inputs prior to submission, rejecting duplicate or invalid serial numbers with immediate, actionable error feedback.
 
 ### Supported Fields
 * `serialNumber` (string, required): Unique 12-character hexadecimal Serial Number of the device.
@@ -648,7 +648,7 @@ To ensure unambiguous validation, uniqueness enforcement, searchability, and bac
   * `entity` (UUID): Property identifier, specified when the device is assigned directly to the Property.
   * `venue` (UUID): Venue identifier, specified when the device is assigned to a specific Venue within the Property hierarchy.
 * `description` (string, optional): Explanatory hardware description, asset tag, or location notes.
-* `deviceConfiguration` (UUID, optional): Specific configuration profile assigned directly to the device during onboarding.
+* `deviceConfiguration` (UUID, optional): Specific Configuration assigned directly to the Device during onboarding.
 
 ### Lifecycle Operations
 * **Scope Reassignment:** Authorized users can move a device between Venues within an authorized Property by updating its scope binding.
@@ -742,9 +742,9 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 5. These dynamic resolution mechanics, variable referencing structures, and dependency validation checks are validated against authoritative OWPROV backend services and reflect confirmed platform capabilities.
 6. **Profile Impact Preview Resolution Flow:** Before a Profile change is saved, the platform resolves affected Devices using a two-tier aggregation flow:
    - The Profile's `variableBlock.configurations` provides the list of referencing Configuration UUIDs.
-   - For each referencing Configuration, the platform queries OWPROV's affected devices calculation (`GetListOfAffectedDevices`), which evaluates that Configuration's active scope assignments (`inUse` across Property, Venue, and Device levels) and cascades down child Venues.
+   - For each referencing Configuration, the backend resolves its active scope assignments across Property, Venue, and Device levels, cascading down child Venues to collect affected devices.
    - The resulting device lists from each Configuration are aggregated and deduplicated into a unified set of affected Devices.
-   - Flow summary: `variableBlock.configurations` → for each Configuration: call OWPROV (`GetListOfAffectedDevices`) → aggregate & deduplicate → affected Devices.
+   - Flow summary: `variableBlock.configurations` → resolve scope assignments per Configuration → aggregate & deduplicate → affected Devices.
 
 ### Requirements
 
@@ -774,7 +774,7 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 
 - **CFG-013:** Updating a Configuration Profile must dynamically update the resolved values of every Configuration that references that Profile upon compilation by OWPROV `APConfig`.
 
-- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices that may be affected by the change. Referencing Configurations are identified from `variableBlock.configurations`, and affected Devices are calculated by calling OWPROV's affected device computation (`GetListOfAffectedDevices`) for each referencing Configuration across its assigned Property, Venue, and Device scopes, deduplicating the combined device set (`variableBlock.configurations` → for each Configuration: call OWPROV `GetListOfAffectedDevices` → deduplicated affected Devices).
+- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices potentially affected by the change. Referencing Configurations are obtained from the VariableBlock relationship, and the backend must resolve those Configurations through their Property, Venue, and Device assignments and return the deduplicated affected Device set.
 
 - **CFG-015:** Saving a Configuration Profile must update the underlying VariableBlock but must not automatically deploy or push live configuration changes to Devices.
 
@@ -1140,7 +1140,7 @@ Phase 1 is ready for product acceptance when:
 
 8. Updating a Configuration Profile dynamically updates the resolved Profile values compiled by APConfig for every referencing Configuration.
 
-9. Before a Profile change is saved, the UI displays the affected Configurations (from `variableBlock.configurations`) and affected Devices (resolved by querying OWPROV affected device calculation for each referencing Configuration).
+9. Before a Profile change is saved, the UI displays the affected Configurations and the deduplicated set of affected Devices resolved across Property, Venue, and Device assignments.
 
 10. Saving a Profile change updates the VariableBlock but does not automatically deploy or push live configuration changes to Devices.
 
