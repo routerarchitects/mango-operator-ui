@@ -1,7 +1,7 @@
 # Mango Cloud MDU UI --- Phase 1 Requirements
 
 **Document status:** Ready for Product and Architecture Approval
-**Version:** 1.2\
+**Version:** 1.2
 **Date:** 5 September 2026
 
 ------------------------------------------------------------------------
