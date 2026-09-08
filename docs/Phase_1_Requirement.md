@@ -94,7 +94,7 @@ but Phase 1 does not introduce a persistent issue-management workflow.
 | **Operator** | A business/provisioning object used to bind subscribers. Creating an Operator automatically creates its corresponding Operator Entity. An Operator is not a loginable User. |
 | **Property** | A top-level MDU site or managed customer location. Backend terminology may represent this as an Entity. |
 | **Venue** | A physical or organizational division within a Property, such as a building, floor, common area, suite, or room. In OWPROV, venues form a recursive hierarchy (`parent` and `children[]`). Individual dwelling spaces or suites are simply leaf Venues in this hierarchy. |
-| **Device** | A managed AP, switch, gateway, or other supported network device. |
+| **Device** | A managed AP, switch, gateway, or other supported network device. Uniquely identified by its 12-character hexadecimal **Serial Number** (`serialNumber`). |
 | **Configuration Profile** | A reusable section-level Configuration component representing the product-facing UI model of an OWPROV **`VariableBlock`**. When referenced by a Configuration section (`{"__variableBlock": "<uuid>"}`), the Configuration retains a live reference in `variables[]`. Profile-provided values are resolved dynamically on-demand and are read-only within that Configuration section. |
 | **Configuration** | The actual named configuration assembled from supported settings and, where applicable, Configuration Profile values. |
 | **Assignment** | Association of a Configuration with a Property, Venue, or Device. |
@@ -543,8 +543,7 @@ Venues (including campus buildings, floors, common areas, and individual suites 
     not be displayed in Phase 1.
 -   **DEV-004:** Fleet views must provide Device status, health, type,
     vendor, uptime, memory, and operational-result information.
--   **DEV-005:** Users must be able to search by Device name, serial
-    number, MAC address, Property, or Venue.
+-   **DEV-005:** Users must be able to search by Device name, Serial Number, Property, or Venue. Searching by Serial Number must match regardless of delimiter formatting (e.g., matching entries with or without colons or hyphens).
 -   **DEV-006:** Users must be able to filter by available Device and
     scope attributes.
 -   **DEV-007:** The Device table must provide, at minimum:
@@ -628,14 +627,20 @@ The Device page must provide the following tabs:
 
 Physical network devices (APs, switches, gateways) are claimed and onboarded into the fleet via the MDU interface, registering the device directly into OWPROV inventory and binding it to an operational Property or Venue.
 
+### Device Serial Number Specification
+To ensure unambiguous validation, uniqueness enforcement, searchability, and backend mapping:
+* **Primary Identifier (`serialNumber`):** Every physical device is identified across the platform by its **Serial Number** (`serialNumber`), which is a unique 12-character hexadecimal string (e.g., `24f5a201ab34`).
+* **Input Flexibility & Normalization:** Hardware stickers and barcode scans commonly format the serial number as a continuous string or with standard delimiters (such as colons or hyphens). The onboarding interface accepts the serial number formatted either way and automatically normalizes it into a clean 12-character lowercase hexadecimal string before submitting to inventory.
+* **Validation & Uniqueness:** The Serial Number must be unique across the platform inventory. The onboarding form enforces format validation (exactly 12 hexadecimal characters) and rejects duplicate or invalid serial numbers with immediate, actionable error feedback.
+
 ### Supported Fields
-* `serialNumber` (string, required): Hardware MAC address or unique serial number of the device.
+* `serialNumber` (string, required): Unique 12-character hexadecimal Serial Number of the device.
 * `name` (string, required): Friendly device name.
 * `deviceType` (string, required): Supported hardware device category or model type (e.g., AP, switch).
 * **Scope Binding** (mutually exclusive):
   * `entity` (UUID): Property identifier, specified when the device is assigned directly to the Property.
   * `venue` (UUID): Venue identifier, specified when the device is assigned to a specific Venue within the Property hierarchy.
-* `description` (string, optional): Explanatory hardware description or location notes.
+* `description` (string, optional): Explanatory hardware description, asset tag, or location notes.
 * `deviceConfiguration` (UUID, optional): Specific configuration profile assigned directly to the device during onboarding.
 
 ### Lifecycle Operations
@@ -645,10 +650,11 @@ Physical network devices (APs, switches, gateways) are claimed and onboarded int
 ### Requirements
 
 -   **DEV-031:** Authorized users must be able to onboard (claim) a new Device into the managed fleet via a dedicated onboarding workflow.
--   **DEV-032:** The Device onboarding workflow must collect `serialNumber`, `name`, `deviceType`, and the target scope binding (`entity` or `venue`).
--   **DEV-033:** Device onboarding must validate required fields and register the device into OWPROV inventory with its assigned scope binding.
--   **DEV-034:** Authorized users must be able to reassign an existing device between Venues within an authorized Property by updating its scope binding.
--   **DEV-035:** Device decommissioning/deletion must remove the device from OWPROV inventory and verify the final backend operation result.
+-   **DEV-032:** The Device onboarding workflow must collect the Device `serialNumber`, friendly `name`, `deviceType`, and the target scope binding (`entity` or `venue`).
+-   **DEV-033:** The Serial Number input field must accept both continuous 12-character strings and delimited formats (with colons or hyphens), automatically normalizing the input to 12 lowercase hexadecimal characters.
+-   **DEV-034:** Device onboarding must enforce format validation (rejecting non-hexadecimal characters and invalid lengths) and inventory uniqueness validation, displaying actionable error messages if the Serial Number is invalid or already registered.
+-   **DEV-035:** Authorized users must be able to reassign an existing device between Venues within an authorized Property by updating its scope binding.
+-   **DEV-036:** Device decommissioning/deletion must remove the device from OWPROV inventory and verify the final backend operation result.
 
 ------------------------------------------------------------------------
 
@@ -1137,7 +1143,7 @@ Phase 1 is ready for product acceptance when:
 
 29. An authorized user can create and update a Venue with its required name and scope binding via OWPROV, and deletion enforces dependency validation.
 
-30. An authorized user can onboard a Device by specifying serial number, name, device type, and scope binding via OWPROV inventory, and reassign or decommission the device.
+30. An authorized user can onboard a Device by entering a valid Serial Number (with automatic delimiter normalization), specify name, device type, and scope binding via OWPROV inventory, and reassign or decommission the device.
 
 31. Dashboard, Property, Venue, and Device views accurately calculate and display the "Needs Attention" state and Device health status based on the baseline indicators defined in Section 7.3.1, displaying the primary trigger condition when inspected.
 
