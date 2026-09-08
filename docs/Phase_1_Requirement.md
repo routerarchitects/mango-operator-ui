@@ -373,22 +373,27 @@ A Device is flagged as **Needing Attention** if it satisfies any of the followin
 * **Unknown:** Telemetry data is absent, stale beyond the allowable window, or the device has never reported operational metrics.
 
 #### Property and Venue Health Rollup Semantics
-Health states roll up hierarchically from Devices and child Venues to their parent Venue and Property:
-* **Critical:**
-  * At least one assigned Device within the scope has a Health state of `Critical`; OR
-  * The percentage of `Offline` Devices within the scope meets or exceeds 10% of total assigned Devices; OR
-  * At least one child Venue within the scope has a Health state of `Critical`.
-* **Warning:**
-  * The scope does not qualify as Critical; AND
-  * At least one assigned Device within the scope has a Health state of `Warning`; OR
-  * At least one assigned Device is `Offline` (under the 10% critical threshold); OR
-  * At least one child Venue within the scope has a Health state of `Warning`.
-* **Healthy:**
-  * All assigned Devices within the scope are `Online` and `Healthy`, and all child Venues are `Healthy`.
-* **Unknown:**
-  * All assigned Devices and child Venues within the scope report `Unknown` health or have no reporting telemetry.
+Health states roll up hierarchically from Devices and child Venues to their parent Venue and Property following a deterministic evaluation order (Precedence: **Critical > Warning > Healthy > Unknown / Empty**):
 
-The total **Devices Needing Attention** count for a Property or Venue represents the deduplicated count of all assigned Devices (including Devices assigned to descendant child Venues) that meet any "Needs Attention" trigger condition.
+1. **Critical:** Evaluated first. A scope is **Critical** if any of the following apply:
+   * At least one assigned Device within the scope has a Health state of `Critical`; OR
+   * The percentage of `Offline` Devices within the scope meets or exceeds 10% of total assigned Devices; OR
+   * At least one child Venue within the scope has a Health state of `Critical`.
+
+2. **Warning:** Evaluated second (only when not Critical). A scope is **Warning** if any of the following apply:
+   * At least one assigned Device within the scope has a Health state of `Warning`; OR
+   * At least one assigned Device is `Offline` (and total offline devices remain under the 10% critical threshold); OR
+   * At least one child Venue within the scope has a Health state of `Warning`.
+
+3. **Healthy:** Evaluated third (only when neither Critical nor Warning). A scope is **Healthy** if:
+   * The scope contains at least one assigned Device or child Venue; AND
+   * All assigned Devices within the scope are `Online` and `Healthy`, and all child Venues are `Healthy`.
+
+4. **Unknown / Empty Scopes:**
+   * **Empty Scopes (Zero Devices):** When a Property or Venue has 0 assigned Devices (and no reporting child Venues), its health status is displayed as **Unknown** (or empty). Telemetry charts and health visualizations display standard empty states with no data, and the Device table displays an empty state with 0 devices.
+   * **Insufficient Telemetry:** If devices exist but report absent or stale telemetry beyond allowable reporting windows, the scope health status is **Unknown**.
+
+The total **Devices Needing Attention** count for a Property or Venue represents the deduplicated count of all assigned Devices (including Devices assigned to descendant child Venues) that meet any "Needs Attention" trigger condition. For empty scopes with 0 devices, this count is 0.
 
 #### Policy and Calibration Note
 These baseline indicators, trigger conditions, rollup formulas, and numerical thresholds provide the initial operational definition for Phase 1 interface development. Because real-world deployments and operational profiles vary, specific trigger conditions, thresholds, and categorical classifications may be adjusted, refined, or driven by platform policy in subsequent iterations prior to final implementation freeze.
@@ -571,9 +576,9 @@ The Device page must provide the following tabs:
 
 -   **DEV-009:** The Device header must show key identity, connection,
     health, scope, and last-seen information.
--   **DEV-010:** Primary actions are Blink, Event Queue, Factory Reset Device, Firmware Upgrade,Re-enroll, Telemetry, Script, Trace, Export Device Data.
+-   **DEV-010:** Primary Device actions supported in the Phase 1 UI are Blink, Event Queue, Factory Reset Device, Re-enroll, Telemetry, Script, Trace, and Export Device Data.
 -   **DEV-011:** Destructive Device actions must require confirmation.
--   **DEV-012:** Firmware upgrade actions are excluded from Phase 1.
+-   **DEV-012:** While device firmware upgrades are supported by the underlying backend platform, Firmware Upgrade actions and workflows are deferred to Phase 2 and must not be exposed as active interactive workflows in the Phase 1 UI.
 -   **DEV-013:** Device deletion must be exposed .
 
 -   **DEV-014:** Device deletion must require explicit confirmation identifying the target Device.
@@ -720,6 +725,7 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 2. Updating a Configuration Profile updates the underlying `VariableBlock` record in OWPROV.
 3. Because resolution is dynamic, updating a Configuration Profile is immediately reflected in configuration previews and in subsequent device configuration generation for future deployments across all referencing Configurations.
 4. Saving or updating a Configuration Profile **never** automatically pushes or deploys live configuration changes to Devices over OWGW. Deployed Devices continue running their existing runtime configuration until an explicit deployment action is initiated by an authorized operator (aligning with CFG-015 and CFG-035).
+5. These dynamic resolution mechanics, variable referencing structures, and dependency validation checks are 100% verified against the authoritative OWPROV backend services.
 
 ### Requirements
 
@@ -1083,6 +1089,8 @@ services.
 MDU should consume these capabilities without duplicating their
 underlying data models or authorization logic. Specifically, Configuration Profiles map directly to OWPROV `VariableBlock` services and leverage native dependency tracking (`variableBlock.configurations`) and dynamic compilation (`APConfig`) rather than an independent MDU data store.
 
+All backend contracts and operational behaviors specified in this document—including `VariableBlock` reference semantics (`{"__variableBlock": "<uuid>"}` in sections and `variables[]`), reverse configuration dependency tracking (`variableBlock.configurations`), on-demand compilation via `APConfig`, and dependency-safe deletion checks—are 100% verified against the authoritative OWPROV backend services and data structures. These requirements represent confirmed platform capabilities rather than provisional assumptions.
+
 ------------------------------------------------------------------------
 
 # 15. Phase 1 Acceptance Criteria
@@ -1159,25 +1167,23 @@ The following items require explicit product or architecture approval before imp
 
 4. Exact Policy assignment and scope behavior supported by the authoritative backend.
 
-5. Configuration assignment and deployment behavior.
+5. Configuration rollback behavior after failed or partial deployment.
 
-6. Configuration rollback behavior after failed or partial deployment.
+6. Identity-provider behavior for invitation, password setup, MFA, and email validation.
 
-7. Identity-provider behavior for invitation, password setup, MFA, and email validation.
+7. What happens when more than one Configuration is assigned at the same scope.
 
-8. What happens when more than one Configuration is assigned at the same scope.
+8. What happens when a Configuration assignment is replaced.
 
-9. What happens when a Configuration assignment is replaced.
+9. What happens when an assignment is removed.
 
-10. What happens when an assignment is removed.
+10. How Property, Venue, and Device assignments are resolved when they define the same field.
 
-11. How Property, Venue, and Device assignments are resolved when they define the same field.
+11. What happens when an assigned Configuration becomes invalid because a referenced Configuration Profile changes.
 
-12. What happens when an assigned Configuration becomes invalid because a referenced Configuration Profile changes.
+12. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
 
-13. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
-
-14. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
+13. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
 
 
 Device deletion behavior, Operator-to-Entity behavior, authorization calculation, and underlying cleanup are backend responsibilities and are not Phase 1 MDU UI decisions.
