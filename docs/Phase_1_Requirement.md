@@ -18,9 +18,10 @@ Configuration, and administer Users and Policies.
 The interface must be organized around operator workflows rather than
 exposing backend service modules directly.
 
-Detailed API contracts, service integration, data models, configuration
-resolution, authorization implementation, and deployment mechanics will
-be defined separately.
+Low-level API endpoints, service communication schemas, and detailed
+implementation specifications will be defined in companion technical
+documentation, while the core backend capabilities and operational models
+outlined in this document are aligned with authoritative platform services.
 
 ------------------------------------------------------------------------
 
@@ -738,7 +739,7 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 2. Updating a Configuration Profile updates the underlying `VariableBlock` record in OWPROV.
 3. Because resolution is dynamic, updating a Configuration Profile is immediately reflected in configuration previews and in subsequent device configuration generation for future deployments across all referencing Configurations.
 4. Saving or updating a Configuration Profile **never** automatically pushes or deploys live configuration changes to Devices over OWGW. Deployed Devices continue running their existing runtime configuration until an explicit deployment action is initiated by an authorized operator (aligning with CFG-015 and CFG-035).
-5. These dynamic resolution mechanics, variable referencing structures, and dependency validation checks are 100% verified against the authoritative OWPROV backend services.
+5. These dynamic resolution mechanics, variable referencing structures, and dependency validation checks are validated against authoritative OWPROV backend services and reflect confirmed platform capabilities.
 6. **Profile Impact Preview Resolution Flow:** Before a Profile change is saved, the platform resolves affected Devices using a two-tier aggregation flow:
    - The Profile's `variableBlock.configurations` provides the list of referencing Configuration UUIDs.
    - For each referencing Configuration, the platform queries OWPROV's affected devices calculation (`GetListOfAffectedDevices`), which evaluates that Configuration's active scope assignments (`inUse` across Property, Venue, and Device levels) and cascades down child Venues.
@@ -846,6 +847,17 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 -   **CFG-034:** Assignment must represent the intended configuration
     relationship and must not imply that the live Device has already
     received the change.
+
+### Assignment Lifecycle and Resolution Semantics
+
+To ensure consistent implementation and deterministic testing:
+
+1. **Precedence and Field Resolution:** When the same configuration setting is defined at multiple scopes, the resolution order is strictly hierarchical, where narrower, more specific scopes override broader parent scopes:
+   `Runtime Overrides > Device-Specific Configuration > Child Venue > Parent Venue > Property > Gateway Default`.
+2. **Assignment Cardinality & Conflict Handling:** Exactly one Configuration may be assigned to a specific scope per supported device type. Attempting to assign a new Configuration to a scope that already has an active assignment prompts the user with an explicit replacement confirmation.
+3. **Assignment Replacement:** Replacing an assigned Configuration updates the scope's configuration reference immediately in OWPROV metadata. Live connected devices continue running their current runtime configuration until an authorized operator explicitly initiates a deployment action (`CFG-034`, `CFG-035`).
+4. **Assignment Removal:** Removing an assigned Configuration deletes the assignment reference from OWPROV. The scope immediately falls back to inheriting configuration from its parent scope (a child Venue inherits from its parent Venue or Property; a Property falls back to the Gateway Default hardware baseline). Live devices continue running their current configuration until an explicit deployment action is executed.
+5. **Invalid Profile Handling:** If a Configuration becomes invalid (e.g., because a referenced Configuration Profile was updated with incompatible settings or missing required fields), dynamic compilation via OWPROV `APConfig` fails validation. The UI flags the Configuration and affected Devices with a validation error (`CFG-004`, `CFG-029`), reflects this in the "Needs Attention" state, and blocks live deployment until the configuration issue is resolved.
 
 
 ## 10.7 Deployment
@@ -1108,7 +1120,7 @@ services.
 MDU should consume these capabilities without duplicating their
 underlying data models or authorization logic. Specifically, Configuration Profiles map directly to OWPROV `VariableBlock` services and leverage native dependency tracking (`variableBlock.configurations`) and dynamic compilation (`APConfig`) rather than an independent MDU data store.
 
-All backend contracts and operational behaviors specified in this document—including `VariableBlock` reference semantics (`{"__variableBlock": "<uuid>"}` in sections and `variables[]`), reverse configuration dependency tracking (`variableBlock.configurations`), on-demand compilation via `APConfig`, and dependency-safe deletion checks—are 100% verified against the authoritative OWPROV backend services and data structures. These requirements represent confirmed platform capabilities rather than provisional assumptions.
+The core backend integration behaviors specified in this document—including `VariableBlock` reference semantics (`{"__variableBlock": "<uuid>"}` in sections and `variables[]`), reverse configuration dependency tracking (`variableBlock.configurations`), on-demand compilation via `APConfig`, and dependency-safe deletion checks—are validated against authoritative OWPROV backend services and data structures. While low-level implementation specifications and open product policies will be finalized in dedicated technical documents, these requirements reflect established and confirmed platform capabilities rather than provisional assumptions.
 
 ------------------------------------------------------------------------
 
@@ -1182,27 +1194,13 @@ The following items require explicit product or architecture approval before imp
 
 2. Phase 1 Device Capability Matrix, including supported Device types and capability-dependent UI actions and data fields.
 
-3. Exact Policy resources and actions exposed in the Phase 1 Policy editor.
+3. Configuration rollback behavior after failed or partial deployment (e.g., automatic revert to previous active configuration vs operator-initiated redeployment).
 
-4. Exact Policy assignment and scope behavior supported by the authoritative backend.
+4. Identity-provider behavior for invitation, password setup, MFA, and email validation.
 
-5. Configuration rollback behavior after failed or partial deployment.
+5. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
 
-6. Identity-provider behavior for invitation, password setup, MFA, and email validation.
-
-7. What happens when more than one Configuration is assigned at the same scope.
-
-8. What happens when a Configuration assignment is replaced.
-
-9. What happens when an assignment is removed.
-
-10. How Property, Venue, and Device assignments are resolved when they define the same field.
-
-11. What happens when an assigned Configuration becomes invalid because a referenced Configuration Profile changes.
-
-12. Numerical performance targets for initial page usability, search and filter response, pagination, Dashboard refresh, and long-running operation feedback.
-
-13. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
+6. Supported browser versions, minimum desktop viewport, and tablet-layout requirements for Installer workflows.
 
 
 Device deletion behavior, Operator-to-Entity behavior, authorization calculation, and underlying cleanup are backend responsibilities and are not Phase 1 MDU UI decisions.
