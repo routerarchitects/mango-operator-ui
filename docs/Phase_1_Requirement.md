@@ -48,7 +48,7 @@ Phase 1 must enable authorized users to:
 ### 3.1 In Scope
 
 -   Global operational Dashboard
--   Property and Venue hierarchy
+-   Property and Venue hierarchy (including recursive child Venues)
 -   Property overview
 -   Venue overview
 -   Fleet-level Device management
@@ -76,6 +76,8 @@ The following are explicitly outside Phase 1:
 -   Billing and service-class management
 -   Dedicated issue assignment, acknowledgement, and resolution workflow
 
+While multi-level Venue hierarchy (including child Venues representing buildings, floors, or suites) is supported in Phase 1 for device association and configuration assignment, resident tenant identity (Subscribers), MPSK/PPSK credentials, and resident portals remain strictly deferred to Phase 2.
+
 Aggregate client KPIs, client lists, client trends, client association
 tables, and subscriber-related workflows must not be included in Phase
 1.
@@ -91,9 +93,9 @@ but Phase 1 does not introduce a persistent issue-management workflow.
 |---|---|
 | **Operator** | A business/provisioning object used to bind subscribers. Creating an Operator automatically creates its corresponding Operator Entity. An Operator is not a loginable User. |
 | **Property** | A top-level MDU site or managed customer location. Backend terminology may represent this as an Entity. |
-| **Venue** | A building, floor, common area, or other child scope within a Property. |
+| **Venue** | A physical or organizational division within a Property, such as a building, floor, common area, suite, or room. In OWPROV, venues form a recursive hierarchy (`parent` and `children[]`). Individual dwelling spaces or suites are simply leaf Venues in this hierarchy. |
 | **Device** | A managed AP, switch, gateway, or other supported network device. |
-| **Configuration Profile** | A reusable section-level Configuration component. When referenced by a Configuration section, the Configuration retains a live reference to the Profile. Profile-provided values are read-only within that Configuration section. |
+| **Configuration Profile** | A reusable section-level Configuration component representing the product-facing UI model of an OWPROV **`VariableBlock`**. When referenced by a Configuration section (`{"__variableBlock": "<uuid>"}`), the Configuration retains a live reference in `variables[]`. Profile-provided values are resolved dynamically on-demand and are read-only within that Configuration section. |
 | **Configuration** | The actual named configuration assembled from supported settings and, where applicable, Configuration Profile values. |
 | **Assignment** | Association of a Configuration with a Property, Venue, or Device. |
 | **Effective Configuration** | The resulting configuration applicable to a Device after applicable assignments and supported overrides/resolution. |
@@ -134,6 +136,57 @@ The UI must use **Property** instead of **Entity** for normal user-facing experi
 
 ------------------------------------------------------------------------
 
+## 4.1 Phase 1 Operational Personas and Top Workflows
+
+Phase 1 organizes user experiences around four key operational personas. These personas represent operational archetypes and design targets for workflow efficiency, screen organization, and interaction density.
+
+### Policy-Driven Authorization Principle
+
+These personas describe operational archetypes and typical user journeys, but **the UI must never hard-code, hard-bind, or statically enforce permissions based on persona or User Role labels.**
+
+All operational capabilities (resource visibility, page access, command triggers, configuration editing, and delegation) are governed dynamically by the **Policy** assigned to the user's **Management Role Assignment** and evaluated by the authoritative backend authorization service.
+
+If an organization customizes or modifies policies later (e.g., granting a CSR permission to trigger diagnostic tests, or restricting an Installer's view), the MDU UI must dynamically adapt available navigation, actions, and fields based solely on backend policy evaluation without requiring UI redesign or hard-bound role coupling.
+
+### 1. Admin (Property / Operator Administrator)
+* **Scope:** Property-wide, multi-Property, or Operator Entity scope.
+* **Operational Focus:** Comprehensive oversight of tenant configuration, scope delegation, access control, and network provisioning.
+* **Top Workflows:**
+  1. **User & Access Provisioning:** Creating users, defining Management Role Assignments (MRAs), and binding users to Assignment Scopes (Property/Venues) and Policies.
+  2. **Configuration Profile & Configuration Management:** Creating and maintaining reusable Configuration Profiles (OWPROV `VariableBlock`s) and named Configurations.
+  3. **Hierarchical Assignment & Deployment:** Assigning Configurations to Properties, Venues, or Devices and managing deployment executions.
+  4. **Operator Administration:** Managing Operator objects and viewing linked customer properties where authorized.
+
+### 2. NOC (Network Operations Center / Tier 2–3 Support)
+* **Scope:** Fleet-wide, regional, or multi-Property operational scope.
+* **Operational Focus:** Proactive fleet monitoring, rapid anomaly detection, performance optimization, and operational triage.
+* **Top Workflows:**
+  1. **Cross-Property Health & Availability Monitoring:** Identifying offline devices, degraded venues, and attention-needing alerts via the operational Dashboard.
+  2. **Telemetry & Radio Inspection:** Analyzing radio channel utilization, interference, transmit power, and device uptime across impacted venues.
+  3. **Diagnostic Execution:** Running operational diagnostic commands (*Blink, Event Queue, Trace, Script, Re-enroll*) to investigate anomalies.
+  4. **Deployment Oversight & Remediation:** Monitoring configuration deployment command states (Completed, Failed, Timed Out) and retrying failed devices.
+
+### 3. Installer (Field Deployment Technician)
+* **Scope:** Scoped to a specific Venue or Property during rollout or physical site maintenance.
+* **Operational Focus:** Rapid physical device onboarding, location verification, and validating that newly installed hardware successfully receives its effective configuration (optimized for tablet/mobile viewport).
+* **Top Workflows:**
+  1. **Device Identification & Search:** Quickly locating physical hardware via serial number, MAC address, or venue filter.
+  2. **Physical Location Verification:** Triggering *Blink LED* on a target device to visually confirm physical installation location during on-site deployment.
+  3. **Connectivity & Radio Verification:** Confirming immediate device link state, radio channel assignment, and telemetry freshness on-site.
+  4. **Effective Configuration Inspection:** Verifying that the device has successfully received its intended configuration and provenance values.
+  5. **Hardware Replacement & Recovery:** Performing factory reset or re-enrollment when replacing or servicing hardware.
+
+### 4. CSR (Customer Service Representative / Tier 1 Support)
+* **Scope:** Scoped to a specific Property or customer Venue.
+* **Operational Focus:** Rapid response to resident or property manager service inquiries by checking local network health without access to deep configuration or destructive actions.
+* **Top Workflows:**
+  1. **Local Connectivity Triage:** Checking Property or Venue operational status in response to customer connectivity complaints.
+  2. **Device State Verification:** Inspecting whether specific APs or gateways serving a tenant are *Online* and *Healthy*.
+  3. **Activity & Reboot Review:** Reviewing recent device uptime and reboot history to identify transient issues.
+  4. **Structured Escalation:** Escalating verified hardware or connectivity failures to NOC or Admin teams with accurate state and identifier details.
+
+------------------------------------------------------------------------
+
 ## 5. Information Architecture
 
 The Phase 1 sidebar should use the following structure:
@@ -167,6 +220,7 @@ ADMINISTRATION
 -   **IA-005:** Navigation and available actions must reflect the user's
     authorized access as evaluated by the platform.
 -   **IA-006:** MDU must not derive operational authorization or resource visibility from a particular User Role.
+-   **IA-007:** Workflow experiences must be optimized for the primary operational personas (Admin, NOC, Installer, CSR) while keeping all functional capabilities dynamically driven by backend Policy evaluation rather than hard-bound to persona classifications.
 
 ------------------------------------------------------------------------
 
@@ -276,7 +330,68 @@ Health and Availability are separate concepts. An Online Device may have Warning
 | Critical | Conditions indicate significant impairment. |
 | Unknown | Current or sufficient health data is unavailable. |
 
-Exact health calculations and thresholds are defined separately.
+-   **DASH-016:** The platform must compute and display the "Needs Attention" status for Devices, Venues, and Properties across Dashboard, Property, Venue, and Device views.
+-   **DASH-017:** A Device must be categorized as Needing Attention when it meets any defined attention trigger condition, including being Offline, in a Warning or Critical health state, or having a failed, timed out, or expired configuration deployment.
+-   **DASH-018:** Property and Venue health must be calculated as a rollup of underlying Device health, availability, and child Venue health states.
+-   **DASH-019:** When inspecting a Device, Venue, or Property flagged as Warning, Critical, or Needing Attention, the UI must display the primary contributing factor or trigger condition.
+
+### 7.3.1 Baseline Health and Needs Attention Semantics
+
+To establish a consistent operational model for Phase 1 interface development, the platform defines the following baseline conditions for Device Health, Needs Attention triggers, and Scope Rollup.
+
+#### Device Availability States
+* **Online:** The Device has established an active management session and has reported telemetry within the expected reporting interval.
+* **Offline:** The Device has lost its management connection or has failed to report telemetry within the expected reporting window.
+* **Unknown:** The Device has never connected, or telemetry data is insufficient to ascertain connectivity state.
+
+#### "Needs Attention" Trigger Conditions
+A Device is flagged as **Needing Attention** if it satisfies any of the following conditions:
+* **Connectivity Impairment:** Device Availability is `Offline`.
+* **Health Impairment:** Device Health is `Critical` or `Warning`.
+* **Configuration Deployment Failure:** The most recent configuration deployment state is `Failed`, `Timed Out`, or `Expired`.
+* **Critical System Alarms:** The Device reports unacknowledged operational alarms (e.g., persistent crash reboot loop, storage exhaustion, or security certificate expiration).
+
+#### Device Health Classification
+
+* **Critical Health:** Indicates severe operational degradation, service interruption, or imminent hardware/software failure:
+  * **Crash Reboot Loop:** Device experienced repeated unexpected reboots (e.g., more than 3 reboots within a rolling 60-minute window).
+  * **Memory Exhaustion:** System RAM utilization exceeds critical threshold (e.g., >90% sustained).
+  * **CPU Saturation:** System CPU load exceeds critical threshold (e.g., >95% sustained over 10 minutes).
+  * **Uplink Failure:** WAN interface is physically down or unable to resolve default gateway connectivity.
+  * **Security / Certificate Failure:** Device management certificate is expired or invalid.
+
+* **Warning Health:** Indicates degraded performance, impending resource stress, or configuration drift:
+  * **Elevated Memory Utilization:** System RAM utilization is elevated (e.g., sustained between 75% and 90%).
+  * **Elevated CPU Utilization:** System CPU load is elevated (e.g., sustained between 80% and 95%).
+  * **RF Degradation:** Radio channel utilization exceeds threshold (e.g., >75% channel utilization or excessive noise/interference).
+  * **Certificate Expiration Approaching:** Device management certificate is due to expire within 30 days.
+  * **Configuration Out of Sync:** Device running configuration differs from its target assigned configuration, or synchronization is pending.
+  * **Radio Interface Degraded:** One or more wireless radios are disabled or reporting anomalous interface errors.
+
+* **Healthy:** All monitored operational metrics (CPU, memory, uptime, radio state, uplink connectivity) are within normal operational limits, and no active warnings, errors, or deployment failures exist.
+
+* **Unknown:** Telemetry data is absent, stale beyond the allowable window, or the device has never reported operational metrics.
+
+#### Property and Venue Health Rollup Semantics
+Health states roll up hierarchically from Devices and child Venues to their parent Venue and Property:
+* **Critical:**
+  * At least one assigned Device within the scope has a Health state of `Critical`; OR
+  * The percentage of `Offline` Devices within the scope meets or exceeds 10% of total assigned Devices; OR
+  * At least one child Venue within the scope has a Health state of `Critical`.
+* **Warning:**
+  * The scope does not qualify as Critical; AND
+  * At least one assigned Device within the scope has a Health state of `Warning`; OR
+  * At least one assigned Device is `Offline` (under the 10% critical threshold); OR
+  * At least one child Venue within the scope has a Health state of `Warning`.
+* **Healthy:**
+  * All assigned Devices within the scope are `Online` and `Healthy`, and all child Venues are `Healthy`.
+* **Unknown:**
+  * All assigned Devices and child Venues within the scope report `Unknown` health or have no reporting telemetry.
+
+The total **Devices Needing Attention** count for a Property or Venue represents the deduplicated count of all assigned Devices (including Devices assigned to descendant child Venues) that meet any "Needs Attention" trigger condition.
+
+#### Policy and Calibration Note
+These baseline indicators, trigger conditions, rollup formulas, and numerical thresholds provide the initial operational definition for Phase 1 interface development. Because real-world deployments and operational profiles vary, specific trigger conditions, thresholds, and categorical classifications may be adjusted, refined, or driven by platform policy in subsequent iterations prior to final implementation freeze.
 
 
 ------------------------------------------------------------------------
@@ -341,6 +456,72 @@ Exact health calculations and thresholds are defined separately.
     appropriate search and filtering.
 -   **VEN-006:** Selecting a Device must open the individual Device
     page.
+
+## 8.4 Hierarchical and Nested Venues
+
+Physical spaces within a Property are organized hierarchically using **Venues**. OWPROV models structural hierarchy recursively using `Venue` records, where a Venue contains a `parent` UUID and a `children[]` array:
+
+```text
+Property (Entity)
+   └── Campus / Building (Venue)
+         └── Floor / Wing / Suite (Child Venue)
+               └── Device(s)
+```
+
+1. **Uniform Hierarchy Model:** All physical spaces and sub-divisions (such as campus buildings, floors, common areas, suites, or individual rooms) are modeled uniformly as Venues in Phase 1. The platform data model and user interface treat all nested spaces as Venues without requiring a separate or specialized entity type.
+2. **Device Association:** Managed Devices (APs, switches) installed within any physical space are associated directly with that space's Venue record via OWPROV's `devices[]` list.
+3. **Configuration Assignment:** Configurations can be assigned directly to any Venue in the hierarchy or inherited from parent Venue or Property scopes.
+4. **Phase 2 Boundary (Subscribers & Resident Portal):** While all physical spaces and their network hardware are fully manageable in Phase 1 via Venues, resident tenant accounts (`subscriber`), resident self-service onboarding, personal SSIDs, and MPSK/PPSK credentials remain strictly Phase 2 capabilities.
+
+### Requirements
+
+-   **VEN-007:** The Property and Venue hierarchy must support recursive child Venues representing physical sub-divisions (e.g., buildings, floors, suites, rooms).
+-   **VEN-008:** All physical spaces within a Property must be modeled directly as OWPROV Venues without requiring a separate "Unit" data entity.
+-   **VEN-009:** Authorized operators must be able to navigate the Venue hierarchy, inspect devices located in nested child Venues, and assign Configurations at any Venue scope.
+-   **VEN-010:** Venue-level operations in Phase 1 must function independently of resident Subscriber records and PPSK credentials.
+
+## 8.5 Property Lifecycle Management
+
+Properties (represented in the backend as Entities) are the top-level managed customer locations. In Phase 1, authorized administrators can create, update, and delete Properties directly through the MDU interface, with lifecycle operations executed authoritatively by OWPROV.
+
+### Supported Fields
+* `name` (string, required): Friendly display name for the Property.
+* `parent` (UUID, required for non-root): Identifier of the parent Operator Entity or platform Root Entity under which the Property is created.
+* `description` (string, optional): Explanatory text describing the Property.
+
+### Lifecycle & Dependency Rules
+* Child collections (`venues`, `devices`, `contacts`, `configurations`) are initialized empty upon creation and populated as child resources are created or linked.
+* Deletion of a Property is dependency-safe: OWPROV disallows deletion while active child Venues or Devices remain associated with the Property.
+
+### Requirements
+
+-   **PROP-013:** Authorized administrators must be able to create a new Property by providing `name`, `parent`, and optional `description`.
+-   **PROP-014:** Authorized administrators must be able to update Property metadata (`name`, `description`).
+-   **PROP-015:** Property deletion must require explicit confirmation and enforce backend dependency validation, disallowing deletion while child Venues or Devices remain.
+-   **PROP-016:** MDU must delegate Property lifecycle management to the authoritative OWPROV service and must not maintain an independent Property data store.
+
+## 8.6 Venue Lifecycle Management
+
+Venues (including campus buildings, floors, common areas, and individual suites or rooms) can be created, updated, and deleted through the MDU interface, with OWPROV managing the recursive hierarchy tree.
+
+### Supported Fields
+* `name` (string, required): Display name of the Venue. Must be unique within the same parent scope.
+* **Scope Binding** (mutually exclusive):
+  * `entity` (UUID): Property identifier, specified when creating a top-level Venue directly under a Property.
+  * `parent` (UUID): Parent Venue identifier, specified when creating a child Venue (e.g., Building → Floor → Suite). The parent Property association is automatically inherited from the parent Venue.
+* `description` (string, optional): Explanatory text describing the Venue.
+* `deviceConfiguration` (UUID, optional): Configuration assigned directly at this scope.
+
+### Lifecycle & Dependency Rules
+* Deletion of a Venue is dependency-safe: OWPROV disallows deletion while active child Venues or assigned Devices remain.
+
+### Requirements
+
+-   **VEN-011:** Authorized users must be able to create a top-level Venue under an authorized Property by specifying `name`, `entity`, and optional `description`.
+-   **VEN-012:** Authorized users must be able to create a child Venue under an existing parent Venue by specifying `name`, `parent`, and optional `description`.
+-   **VEN-013:** Authorized users must be able to update Venue metadata (`name`, `description`).
+-   **VEN-014:** Venue deletion must require explicit confirmation and enforce backend dependency validation, disallowing deletion while child Venues or assigned Devices remain.
+-   **VEN-015:** MDU must delegate Venue lifecycle management to the authoritative OWPROV service.
 
 ------------------------------------------------------------------------
 
@@ -443,7 +624,31 @@ The Device page must provide the following tabs:
 -   **DEV-030:** Operational activities must show available status,
     time, and result information.
 
+## 9.3 Device Onboarding and Lifecycle Management
 
+Physical network devices (APs, switches, gateways) are claimed and onboarded into the fleet via the MDU interface, registering the device directly into OWPROV inventory and binding it to an operational Property or Venue.
+
+### Supported Fields
+* `serialNumber` (string, required): Hardware MAC address or unique serial number of the device.
+* `name` (string, required): Friendly device name.
+* `deviceType` (string, required): Supported hardware device category or model type (e.g., AP, switch).
+* **Scope Binding** (mutually exclusive):
+  * `entity` (UUID): Property identifier, specified when the device is assigned directly to the Property.
+  * `venue` (UUID): Venue identifier, specified when the device is assigned to a specific Venue within the Property hierarchy.
+* `description` (string, optional): Explanatory hardware description or location notes.
+* `deviceConfiguration` (UUID, optional): Specific configuration profile assigned directly to the device during onboarding.
+
+### Lifecycle Operations
+* **Scope Reassignment:** Authorized users can move a device between Venues within an authorized Property by updating its scope binding.
+* **Decommissioning & Deletion:** Unclaiming or deleting a device removes its inventory record from OWPROV and terminates active gateway associations upon explicit confirmation.
+
+### Requirements
+
+-   **DEV-031:** Authorized users must be able to onboard (claim) a new Device into the managed fleet via a dedicated onboarding workflow.
+-   **DEV-032:** The Device onboarding workflow must collect `serialNumber`, `name`, `deviceType`, and the target scope binding (`entity` or `venue`).
+-   **DEV-033:** Device onboarding must validate required fields and register the device into OWPROV inventory with its assigned scope binding.
+-   **DEV-034:** Authorized users must be able to reassign an existing device between Venues within an authorized Property by updating its scope binding.
+-   **DEV-035:** Device decommissioning/deletion must remove the device from OWPROV inventory and verify the final backend operation result.
 
 ------------------------------------------------------------------------
 
@@ -482,9 +687,14 @@ The detailed configuration-resolution mechanism is defined separately.
 
 Configuration Profiles are reusable section-level Configuration components.
 
+### Product-to-Backend Mapping
+Configuration Profiles in the MDU UI are explicitly defined as the product-facing representation of OWPROV **`VariableBlock`** objects. The MDU UI does not introduce or require a separate independent Profile data store; it maps directly to OWPROV VariableBlock services.
+
+In Configuration JSON, referencing a Configuration Profile inserts an OWPROV `{"__variableBlock": "<uuid>"}` reference into the corresponding configuration section, and the Configuration retains a reference in its `variables[]` array. OWPROV tracks referencing Configurations directly in `variableBlock.configurations` (and `inUse`), enabling native dependency-safe lifecycle enforcement.
+
 A supported Configuration section may reference one Configuration Profile at a time.
 
-When a Configuration Profile is selected for a Configuration section, the Configuration retains a live reference to that Profile. Profile-provided values are resolved from the current Profile definition and are read-only within the Configuration.
+When a Configuration Profile is selected for a Configuration section, the Configuration retains a live reference to that Profile. Profile-provided values are resolved from the current Profile (VariableBlock) definition and are read-only within the Configuration.
 
 Profile-provided values cannot be individually overridden within the Configuration.
 
@@ -498,7 +708,16 @@ Removing the Profile reference allows that Configuration section to be configure
 
 Complete Configuration Templates are not included in Phase 1. Configuration Profiles are reusable section-level components and must not be presented as complete Configurations.
 
-- **CFG-005:** Reusable section-level configuration components must be presented as **Configuration Profiles**.
+### Dynamic Resolution Semantics
+Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`** compiler:
+1. When generating a device configuration or rendering a configuration preview, `APConfig` dynamically retrieves the current `VariableBlock` records referenced by UUID and merges them into the resolved configuration.
+2. Updating a Configuration Profile updates the underlying `VariableBlock` record in OWPROV.
+3. Because resolution is dynamic, updating a Configuration Profile is immediately reflected in configuration previews and in subsequent device configuration generation for future deployments across all referencing Configurations.
+4. Saving or updating a Configuration Profile **never** automatically pushes or deploys live configuration changes to Devices over OWGW. Deployed Devices continue running their existing runtime configuration until an explicit deployment action is initiated by an authorized operator (aligning with CFG-015 and CFG-035).
+
+### Requirements
+
+- **CFG-005:** Reusable section-level configuration components must be presented in the UI as **Configuration Profiles**, mapping directly to OWPROV `VariableBlock` APIs without an independent MDU profile data store.
 
 - **CFG-006:** Users must be able to create, view, edit, and duplicate Configuration Profiles where authorized.
 
@@ -511,7 +730,7 @@ Complete Configuration Templates are not included in Phase 1. Configuration Prof
 
 - **CFG-008:** A supported Configuration section may reference only one Configuration Profile at a time.
 
-- **CFG-009:** When a Configuration Profile is selected for a Configuration section, the Configuration must retain a live reference to that Profile.
+- **CFG-009:** When a Configuration Profile is selected for a Configuration section, the Configuration must retain a live reference to that Profile via OWPROV `{"__variableBlock": "<uuid>"}` and `variables[]`.
 
 - **CFG-010:** Profile-provided values must be read-only within the Configuration and must not support field-level overrides.
 
@@ -522,15 +741,15 @@ Complete Configuration Templates are not included in Phase 1. Configuration Prof
   - Replace Profile
   - Remove Profile and configure manually
 
-- **CFG-013:** Updating a Configuration Profile must affect the resolved values of every Configuration that references that Profile.
+- **CFG-013:** Updating a Configuration Profile must dynamically update the resolved values of every Configuration that references that Profile upon compilation by OWPROV `APConfig`.
 
-- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices that may be affected by the change.
+- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices that may be affected by the change (derived from `variableBlock.configurations`).
 
-- **CFG-015:** Saving a Configuration Profile must not automatically deploy configuration changes to Devices.
+- **CFG-015:** Saving a Configuration Profile must update the underlying VariableBlock but must not automatically deploy or push live configuration changes to Devices.
 
-- **CFG-016:** Configuration previews must resolve the latest saved Profile values.
+- **CFG-016:** Configuration previews must dynamically resolve the latest saved Profile (VariableBlock) values via APConfig.
 
-- **CFG-017:** An in-use Configuration Profile must not be deleted until its references are removed or replaced.
+- **CFG-017:** An in-use Configuration Profile must not be deleted until all referencing Configurations in its `configurations` list are removed or replaced.
 
 - **CFG-018:** Deployment records must identify the Configuration Profile revision used when the downstream platform provides revision information.
 
@@ -552,7 +771,7 @@ Complete Configuration Templates are not included in Phase 1. Configuration Prof
   - Edit
   - Duplicate
 
-- **CFG-022:** Profile deletion must be dependency-safe and must not allow deletion while unresolved Configuration references remain.
+- **CFG-022:** Profile deletion must be dependency-safe, leveraging OWPROV's native `VariableBlock` deletion checks to disallow deletion while referencing Configurations remain in `variableBlock.configurations`.
 
 ## 10.4 Configurations List
 - **CFG-023:** The Configurations list must display:
@@ -843,19 +1062,20 @@ Specific measurable performance targets will be defined in the technical specifi
 The MDU UI consumes capabilities from the underlying Mango Cloud
 services.
 
-  Capability                      Downstream Service
-  ------------------------------- ---------------------------------------
-  Authentication / identity       OWSEC
-  Properties / Venues             OWPROV
-  Inventory / Device ownership    OWPROV
-  Users                           OWPROV / configured identity services
-  Policies / access information   OWPROV
-  Device operations               OWGW
-  Device telemetry                Operational/analytics services
-  Configuration                   OWPROV + OWGW
+  Capability                                Downstream Service
+  ----------------------------------------- ---------------------------------------
+  Authentication / identity                 OWSEC
+  Properties / Venues                       OWPROV (Entities, recursive child Venues)
+  Inventory / Device ownership              OWPROV
+  Users                                     OWPROV / configured identity services
+  Policies / access information             OWPROV
+  Device operations                         OWGW
+  Device telemetry                          Operational/analytics services
+  Configuration Profiles (VariableBlocks)   OWPROV
+  Configuration                             OWPROV + OWGW
 
 MDU should consume these capabilities without duplicating their
-underlying data models or authorization logic.
+underlying data models or authorization logic. Specifically, Configuration Profiles map directly to OWPROV `VariableBlock` services and leverage native dependency tracking (`variableBlock.configurations`) and dynamic compilation (`APConfig`) rather than an independent MDU data store.
 
 ------------------------------------------------------------------------
 
@@ -866,20 +1086,20 @@ Phase 1 is ready for product acceptance when:
 1. An authorized user can navigate Dashboard → Property → Venue → Device using Mango Cloud terminology.
 2. Dashboard, Property, Venue, and Device health and availability information is consistent for the same underlying data.
 3. An authorized user can search for and inspect Devices through the defined Device views.
-4. Users only see resources and actions available to them through the platform authorization model.
-5. An authorized user can create a Configuration Profile and use it within a Configuration.
+4. Users only see resources and actions available to them through the platform authorization model, with workflows adapting dynamically based on Policy permissions rather than hard-coded persona or role classifications.
+5. An authorized user can create a Configuration Profile (mapped to an OWPROV VariableBlock) and use it within a Configuration.
 
-6. Profile-provided values are resolved through the live Profile reference, are displayed as read-only within the Configuration, and cannot be individually overridden.
+6. Profile-provided values are dynamically resolved from the underlying VariableBlock via OWPROV APConfig, are displayed as read-only within the Configuration, and cannot be individually overridden.
 
-7. A Configuration retains a live reference to a selected Configuration Profile.
+7. A Configuration retains a live reference to a selected Configuration Profile via OWPROV `{"__variableBlock": "<uuid>"}` in the section and in `variables[]`.
 
-8. Updating a Configuration Profile changes the resolved Profile values used by every referencing Configuration.
+8. Updating a Configuration Profile dynamically updates the resolved Profile values compiled by APConfig for every referencing Configuration.
 
-9. Before a Profile change is saved, the UI displays the affected Configurations and Devices.
+9. Before a Profile change is saved, the UI displays the affected Configurations and Devices (derived from `variableBlock.configurations`).
 
-10. Saving a Profile change does not automatically deploy the resulting Configuration changes to Devices.
+10. Saving a Profile change updates the VariableBlock but does not automatically deploy or push live configuration changes to Devices.
 
-11. An in-use Profile cannot be deleted until all Profile references are removed or replaced.
+11. An in-use Profile cannot be deleted while unresolved Configuration references remain in its `configurations` list.
 
 12. An authorized user can assign a Configuration to a Property, Venue, or Device.
 
@@ -911,11 +1131,21 @@ Phase 1 is ready for product acceptance when:
 
 26. Profile-provided values are identified with their Profile source, such as `From Profile: <Profile Name>`, and provide View, Replace, and Remove Profile actions.
 
+27. An authorized user can navigate into nested child Venues, view associated devices, and assign Configurations at any Venue scope without requiring resident Subscriber records.
+
+28. An authorized user can create and update a Property with its required name and parent scope via OWPROV, and deleting a Property enforces dependency validation.
+
+29. An authorized user can create and update a Venue with its required name and scope binding via OWPROV, and deletion enforces dependency validation.
+
+30. An authorized user can onboard a Device by specifying serial number, name, device type, and scope binding via OWPROV inventory, and reassign or decommission the device.
+
+31. Dashboard, Property, Venue, and Device views accurately calculate and display the "Needs Attention" state and Device health status based on the baseline indicators defined in Section 7.3.1, displaying the primary trigger condition when inspected.
+
 # 16. Open Product Decisions
 
 The following items require explicit product or architecture approval before implementation freeze:
 
-1. Property, Venue, and Device health formulas and thresholds.
+1. Final calibration and policy-driven tuning of Property, Venue, and Device health formulas and numerical thresholds (baseline semantics established in Section 7.3.1).
 
 2. Phase 1 Device Capability Matrix, including supported Device types and capability-dependent UI actions and data fields.
 
@@ -951,9 +1181,9 @@ Device deletion behavior, Operator-to-Entity behavior, authorization calculation
 Phase 1 should preserve navigation and data-model extension points for:
 
 -   Clients and client troubleshooting
--   Subscribers
--   Units
--   SSID/MPSK/PPSK access
+-   Subscribers (resident tenant identity and self-service portal)
+-   Resident tenant onboarding and resident-to-Venue binding
+-   SSID/MPSK/PPSK access and resident personal network credentials
 -   Subscriber Devices
 -   Firmware catalog and rollout
 -   Global audit trail and change history
