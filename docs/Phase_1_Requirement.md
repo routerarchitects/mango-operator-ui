@@ -31,7 +31,7 @@ Phase 1 must enable authorized users to:
 1.  Identify Properties and Devices that need attention.
 2.  Navigate consistently from Property to Venue to Device.
 3.  Search and inspect the managed Device fleet.
-4.  Review Device health, telemetry, configuration,information.
+4.  Review Device health, telemetry, configuration, and operational information.
 5.  Create and manage reusable Configuration Profiles and
     Configurations.
 6.  Assign Configuration at Property, Venue, or Device scope.
@@ -170,7 +170,7 @@ If an organization customizes or modifies policies later (e.g., granting a CSR p
 * **Scope:** Scoped to a specific Venue or Property during rollout or physical site maintenance.
 * **Operational Focus:** Rapid physical device onboarding, location verification, and validating that newly installed hardware successfully receives its effective configuration (optimized for tablet/mobile viewport).
 * **Top Workflows:**
-  1. **Device Identification & Search:** Quickly locating physical hardware via serial number, MAC address, or venue filter.
+  1. **Device Identification & Search:** Quickly locating physical hardware via serial number, device name, or venue filter.
   2. **Physical Location Verification:** Triggering *Blink LED* on a target device to visually confirm physical installation location during on-site deployment.
   3. **Connectivity & Radio Verification:** Confirming immediate device link state, radio channel assignment, and telemetry freshness on-site.
   4. **Effective Configuration Inspection:** Verifying that the device has successfully received its intended configuration and provenance values.
@@ -330,9 +330,11 @@ Health and Availability are separate concepts. An Online Device may have Warning
 | Critical | Conditions indicate significant impairment. |
 | Unknown | Current or sufficient health data is unavailable. |
 
--   **DASH-016:** The platform must compute and display the "Needs Attention" status for Devices, Venues, and Properties across Dashboard, Property, Venue, and Device views.
+All heavy computational tasks—including device health evaluation, trigger condition determination, and large-scope recursive rollups across Properties and Venues—are performed by the MDU backend rather than in the browser. The MDU UI consumes normalized health results and server-aggregated scope summaries directly via server-side APIs.
+
+-   **DASH-016:** The MDU backend must compute and provide normalized "Needs Attention" and health states for the UI to display across Dashboard, Property, Venue, and Device views.
 -   **DASH-017:** A Device must be categorized as Needing Attention when it meets any defined attention trigger condition, including being Offline, in a Warning or Critical health state, or having a failed, timed out, or expired configuration deployment.
--   **DASH-018:** Property and Venue health must be calculated as a rollup of underlying Device health, availability, and child Venue health states.
+-   **DASH-018:** Property and Venue health rollups across large scopes must be calculated on the MDU backend and delivered via server-side APIs, rather than aggregated recursively in the browser.
 -   **DASH-019:** When inspecting a Device, Venue, or Property flagged as Warning, Critical, or Needing Attention, the UI must display the primary contributing factor or trigger condition.
 
 ### 7.3.1 Baseline Health and Needs Attention Semantics
@@ -579,7 +581,7 @@ The Device page must provide the following tabs:
 -   **DEV-010:** Primary Device actions supported in the Phase 1 UI are Blink, Event Queue, Factory Reset Device, Re-enroll, Telemetry, Script, Trace, and Export Device Data.
 -   **DEV-011:** Destructive Device actions must require confirmation.
 -   **DEV-012:** While device firmware upgrades are supported by the underlying backend platform, Firmware Upgrade actions and workflows are deferred to Phase 2 and must not be exposed as active interactive workflows in the Phase 1 UI.
--   **DEV-013:** Device deletion must be exposed .
+-   **DEV-013:** Device deletion must be exposed to authorized users within the individual Device view.
 
 -   **DEV-014:** Device deletion must require explicit confirmation identifying the target Device.
 
@@ -605,11 +607,10 @@ The Device page must provide the following tabs:
 ### Configuration
 
 -   **DEV-022:** The Configuration tab must distinguish:
-    -   Assigned Configuration
-    -   Device Overrides
-    -   Effective Configuration
--   **DEV-023:** Users must be able to understand where effective values
-    originate.
+    -   Assigned Configuration (inherited from parent Property or Venue scope)
+    -   Device-Specific Configuration and Runtime Parameter Overrides (e.g., Radio Channel, TX Power)
+    -   Effective / Computed Configuration (compiled on-demand via APConfig, with provenance indicating the origin of each setting)
+-   **DEV-023:** Users must be able to inspect the computed configuration provenance to understand where each effective value originates (Property, Venue, Profile, or local Device override).
 -   **DEV-024:** Authorized users must be able to modify supported
     Device-specific overrides.
 -   **DEV-025:** The UI must preview relevant changes before saving or
@@ -667,21 +668,31 @@ To ensure unambiguous validation, uniqueness enforcement, searchability, and bac
 
 ## 10.1 Configuration Model
 
-Phase 1 supports configuration at multiple levels:
+Phase 1 supports configuration across a multi-tier inheritance hierarchy:
 
 ``` text
-Property
+Default (Gateway Hardware Baseline)
    ↓
-Venue
+Property (Entity-level Configuration)
    ↓
-Device
+Venue (Hierarchical Venue Configuration)
    ↓
-Device Override
+Device (Device-Specific Configuration)
+   ↓
+Runtime Overrides (Parameter-level tuning)
 ```
 
-The resulting Device configuration is the **Effective Configuration**.
+The resulting Device configuration compiled across this hierarchy is the **Effective Configuration**.
 
-The detailed configuration-resolution mechanism is defined separately.
+### Target Scope and Storage Selection Semantics
+
+Downstream Mango Cloud services maintain different configuration capabilities depending on where the configuration is stored:
+
+1. **Property and Venue Scopes (OWPROV):** Configurations assigned at Property, Venue, or nested child Venue levels are stored in OWPROV. These scopes fully support hierarchical inheritance, Configuration Profiles (OWPROV `VariableBlock` objects), and dynamic on-demand compilation via OWPROV `APConfig`.
+2. **Gateway Defaults (OWGW `default_configurations`):** Default configurations stored in OWGW provide hardware-model baselines when a device has no scope-specific configuration. OWGW does not maintain VariableBlock entities and does not possess variable compilation logic.
+3. **Selective UI Adaptation:** To ensure valid payloads and prevent downstream deployment errors, the MDU UI adapts its configuration editor based on the chosen destination target:
+   - When creating or editing a Configuration targeted at **Property or Venue scopes (OWPROV)**, the UI enables the **Configuration Profile** selector across supported sections (e.g., Radios, Interfaces), allowing operators to link reusable profiles or configure sections manually.
+   - When creating or editing a Configuration targeted as a **Gateway Default (OWGW)**, the UI selectively hides or disables Configuration Profile dropdowns and presents direct configuration input fields only, ensuring the resulting payload is completely self-contained and flat without unresolved variable references.
 
 ### Requirements
 
@@ -700,6 +711,8 @@ Configuration Profiles are reusable section-level Configuration components.
 
 ### Product-to-Backend Mapping
 Configuration Profiles in the MDU UI are explicitly defined as the product-facing representation of OWPROV **`VariableBlock`** objects. The MDU UI does not introduce or require a separate independent Profile data store; it maps directly to OWPROV VariableBlock services.
+
+Configuration Profiles apply specifically to OWPROV configuration scopes (Properties, Venues, and OWPROV-managed device configurations). Because OWGW does not store VariableBlocks or execute dynamic variable compilation (`APConfig`), Configuration Profiles are not used when authoring flat Gateway Default configurations or direct OWGW device table configurations.
 
 In Configuration JSON, referencing a Configuration Profile inserts an OWPROV `{"__variableBlock": "<uuid>"}` reference into the corresponding configuration section, and the Configuration retains a reference in its `variables[]` array. OWPROV tracks referencing Configurations directly in `variableBlock.configurations` (and `inUse`), enabling native dependency-safe lifecycle enforcement.
 
@@ -726,6 +739,11 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 3. Because resolution is dynamic, updating a Configuration Profile is immediately reflected in configuration previews and in subsequent device configuration generation for future deployments across all referencing Configurations.
 4. Saving or updating a Configuration Profile **never** automatically pushes or deploys live configuration changes to Devices over OWGW. Deployed Devices continue running their existing runtime configuration until an explicit deployment action is initiated by an authorized operator (aligning with CFG-015 and CFG-035).
 5. These dynamic resolution mechanics, variable referencing structures, and dependency validation checks are 100% verified against the authoritative OWPROV backend services.
+6. **Profile Impact Preview Resolution Flow:** Before a Profile change is saved, the platform resolves affected Devices using a two-tier aggregation flow:
+   - The Profile's `variableBlock.configurations` provides the list of referencing Configuration UUIDs.
+   - For each referencing Configuration, the platform queries OWPROV's affected devices calculation (`GetListOfAffectedDevices`), which evaluates that Configuration's active scope assignments (`inUse` across Property, Venue, and Device levels) and cascades down child Venues.
+   - The resulting device lists from each Configuration are aggregated and deduplicated into a unified set of affected Devices.
+   - Flow summary: `variableBlock.configurations` → for each Configuration: call OWPROV (`GetListOfAffectedDevices`) → aggregate & deduplicate → affected Devices.
 
 ### Requirements
 
@@ -755,7 +773,7 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 
 - **CFG-013:** Updating a Configuration Profile must dynamically update the resolved values of every Configuration that references that Profile upon compilation by OWPROV `APConfig`.
 
-- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices that may be affected by the change (derived from `variableBlock.configurations`).
+- **CFG-014:** Before a Profile change is saved, the UI must show the Configurations and Devices that may be affected by the change. Referencing Configurations are identified from `variableBlock.configurations`, and affected Devices are calculated by calling OWPROV's affected device computation (`GetListOfAffectedDevices`) for each referencing Configuration across its assigned Property, Venue, and Device scopes, deduplicating the combined device set (`variableBlock.configurations` → for each Configuration: call OWPROV `GetListOfAffectedDevices` → deduplicated affected Devices).
 
 - **CFG-015:** Saving a Configuration Profile must update the underlying VariableBlock but must not automatically deploy or push live configuration changes to Devices.
 
@@ -810,7 +828,7 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
     Configurations.
 -   **CFG-027:** Configurations must provide understandable groups of
     settings.
--   **CFG-028:** A supported Configuration section must allow the user to either reference a compatible Configuration Profile or configure the section manually.
+-   **CFG-028:** When targeting Property or Venue scopes (OWPROV), a supported Configuration section must allow the user to either reference a compatible Configuration Profile or configure the section manually. When targeting Gateway Default configurations (OWGW), the UI must hide Profile referencing and provide direct manual field configuration.
 -   **CFG-029:** Before saving a Configuration, the UI must validate required fields, supported data types and ranges, Profile references, and applicable cross-field constraints.
 -   **CFG-030:** Saved Configurations must have identifiable names and
     modification information.
@@ -818,9 +836,10 @@ Configuration resolution occurs dynamically on-demand via OWPROV's **`APConfig`*
 ## 10.6 Assignment
 
 -   **CFG-031:** Configuration assignment must support:
-    -   Property
-    -   Venue
-    -   Device
+    -   Property (OWPROV scope)
+    -   Venue (OWPROV scope, including recursive child Venues)
+    -   Device (OWPROV Inventory / Device-specific configuration)
+    -   Gateway Default (OWGW hardware-model baseline)
 -   **CFG-032:** Users must only be able to assign Configuration within
     their authorized scope.
 -   **CFG-033:** Before saving a Configuration assignment, the UI must show the target scope and the Devices affected by the assignment.
@@ -902,7 +921,7 @@ The platform/downstream services remain authoritative for authentication, author
 -   **USR-008:** User details must show the scope associated with applicable Policy assignments.
 -   **USR-009:** Authorized administrators must be able to create and update Users through the authoritative backend.
 -   **USR-010:** User creation/update UX must support the profile information, User Role, and Management Role Assignment information supported by the backend.
--   **USR-011:** Authorized administrators must be able to add, edit, or remove Management Role Assignments .
+-   **USR-011:** Authorized administrators must be able to add, edit, or remove Management Role Assignments.
 -   **USR-012:** User lifecycle actions such as suspend/reactivate must be provided.
 -   **USR-013:** Authentication-specific operations must use the configured identity service.
 -   **USR-014:** MDU must not use a User Role to independently determine authorization or implement role-based permission logic.
@@ -1101,7 +1120,7 @@ Phase 1 is ready for product acceptance when:
 2. Dashboard, Property, Venue, and Device health and availability information is consistent for the same underlying data.
 3. An authorized user can search for and inspect Devices through the defined Device views.
 4. Users only see resources and actions available to them through the platform authorization model, with workflows adapting dynamically based on Policy permissions rather than hard-coded persona or role classifications.
-5. An authorized user can create a Configuration Profile (mapped to an OWPROV VariableBlock) and use it within a Configuration.
+5. An authorized user can create a Configuration Profile (mapped to an OWPROV VariableBlock) and use it within a Configuration targeted at Property or Venue scopes, with the UI selectively hiding Profile options when authoring Gateway Default configurations.
 
 6. Profile-provided values are dynamically resolved from the underlying VariableBlock via OWPROV APConfig, are displayed as read-only within the Configuration, and cannot be individually overridden.
 
@@ -1109,17 +1128,17 @@ Phase 1 is ready for product acceptance when:
 
 8. Updating a Configuration Profile dynamically updates the resolved Profile values compiled by APConfig for every referencing Configuration.
 
-9. Before a Profile change is saved, the UI displays the affected Configurations and Devices (derived from `variableBlock.configurations`).
+9. Before a Profile change is saved, the UI displays the affected Configurations (from `variableBlock.configurations`) and affected Devices (resolved by querying OWPROV affected device calculation for each referencing Configuration).
 
 10. Saving a Profile change updates the VariableBlock but does not automatically deploy or push live configuration changes to Devices.
 
 11. An in-use Profile cannot be deleted while unresolved Configuration references remain in its `configurations` list.
 
-12. An authorized user can assign a Configuration to a Property, Venue, or Device.
+12. An authorized user can assign a Configuration to a Property, Venue, Device, or Gateway Default scope.
 
 13. Configuration assignment and live deployment are represented as separate actions.
 
-14. A Device page shows its Effective Configuration and the source of relevant values, including Profile-provided values where applicable.
+14. A Device page shows its Effective (Computed) Configuration, provenance explanation, and supports device-specific runtime parameter overrides (such as radio channel and TX power).
 
 15. Per-Device Configuration deployment results clearly display the relevant OWGW command state: Pending, Executing, Executed, Completed, Failed, Timed Out, or Expired.
 
@@ -1153,7 +1172,7 @@ Phase 1 is ready for product acceptance when:
 
 30. An authorized user can onboard a Device by entering a valid Serial Number (with automatic delimiter normalization), specify name, device type, and scope binding via OWPROV inventory, and reassign or decommission the device.
 
-31. Dashboard, Property, Venue, and Device views accurately calculate and display the "Needs Attention" state and Device health status based on the baseline indicators defined in Section 7.3.1, displaying the primary trigger condition when inspected.
+31. Dashboard, Property, Venue, and Device views consume and display normalized Device health and server-side scope rollups based on the baseline indicators defined in Section 7.3.1, displaying the primary trigger condition when inspected.
 
 # 16. Open Product Decisions
 
