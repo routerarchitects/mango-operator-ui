@@ -6,10 +6,10 @@
 
 | Attribute | Value |
 | :--- | :--- |
-| **Document Version** | 1.1.0 |
-| **Modules** | Administration (Users & Access), Configuration (Configuration Profiles & Modular Configurations) |
+| **Document Version** | 1.2.2 |
+| **Modules** | Properties & Venues, Administration (Users & Access), Configuration (Configuration Profiles & Modular Configurations) |
 | **Target Codebase** | `mango-operator-ui` (React / TypeScript / TanStack Query / Vite) |
-| **Reference Implementation** | `ra-wlan-cloud-owprov-ui` (`src/hooks/Network/Users.ts`, `src/hooks/Network/ManagementRoles.ts`, `src/hooks/Network/VariableBlocks.ts`, `src/hooks/Network/Configurations.ts`) |
+| **Reference and implementation targets** | `ra-wlan-cloud-owprov-ui` for established OWPROV workflows; planned Property UI implementation under `mango-operator-ui/src/pages/Properties` after this specification is approved |
 | **Downstream Microservices** | `OWSEC` (Port 9002), `OWPROV` (Port 9005 / V1 & V2), `OWGW` (Port 9000) |
 | **Target Audience** | Frontend Engineers, QA Automation Engineers, Backend Integration Engineers |
 | **Status** | Authoritative Normative Specification |
@@ -20,16 +20,17 @@
 
 > [!IMPORTANT]
 > **Tab-Wise Implementation Strategy:**  
-> The Phase 1 delivery for `mango-operator-ui` is executed and specified **tab-by-tab**. Each functional tab is specified to industry standards with complete API contracts, component architecture, state machines, validation schemas, and test scenarios. Once the specification for a tab is approved, engineering implements and validates that specific tab end-to-end before proceeding to subsequent modules.
+> The Phase 1 delivery for `mango-operator-ui` is executed and specified **tab-by-tab**. Each functional tab defines its UI-facing data dependencies, component architecture, state behavior, validation rules, and test scenarios. Backend API implementation contracts remain in their responsible service specifications. Once the specification for a tab is approved, engineering implements and validates that specific tab end-to-end before proceeding to subsequent modules.
 >
 > In Phase 1, the core modules specified in this document include:
 > 1. **Users Tab (Administration):** Identity management, authentication lifecycles, user directory with search/filters/pagination, real-time KPI metrics, detailed profile editing, scoped access infrastructure management (MRAs), and user onboarding.
 > 2. **Policies Tab (Administration):** Management policy catalog, headline policy KPIs, resource permissions visualizer, overview aggregation API, and root-only policy lifecycle administration.
 > 3. **Configuration Profiles Tab (Configuration):** Section-level reusable configuration building blocks mapping directly to OWPROV `VariableBlock` resources, with specialized form builders, validation rules, and JSON wire serializers across eight (8) foundational profile sections (`radio`, `interface.ssid`, `interface.ipv4`, `interface.ssid.radius`, `interface.vlan`, `interface.tunnel`, `interface.captive`, `interface.ssid.openroaming`).
 > 4. **Configurations Tab (Configuration):** Modular multi-section configuration authoring, deep recursive variable block scanning (`__variableBlock`) for read-time name resolution (`?select=`), lossless configuration editing with root `variables[]` preservation, and lifecycle management.
+> 5. **Properties Module (Operations):** Authorized Property/Venue hierarchy, portfolio and scope workspaces, Property/Venue lifecycle forms, scoped Devices, and scoped Configurations from the Mango Operator UI perspective.
 >
 > **Scope of this Document:**  
-> This specification covers the core modules of Phase 1: **Part 1** details the Users Tab and its associated workflows; **Part 2** details the Policies Tab, its resource permissions configuration, and aggregation integrations; **Part 3** details the Configuration Profiles Tab and supported section schemas; **Part 4** details the Modular Configurations Tab, read-only variable extraction algorithms, lossless editing guarantees, and deployment lifecycle. This document provides the authoritative normative contract for **data structures, API interactions, business logic, component behavior, validation rules, state management, and error handling**.
+> This specification covers the core modules of Phase 1: **Part 1** details the Users Tab and its associated workflows; **Part 2** details the Policies Tab; **Part 3** details Configuration Profiles; **Part 4** details Modular Configurations; and **Part 5** defines the Mango Operator UI behavior for the Properties module. Part 5 specifies UI-facing data dependencies, component behavior, validation, query state, presentation, navigation, and error handling. Backend authorization, aggregation, persistence, caching, pagination implementation, and service ownership remain contracts of their responsible services and are intentionally outside Part 5.
 
 ---
 
@@ -2317,5 +2318,431 @@ export interface ModularConfigurationApiResponse {
 - **TC-CFG-013 (Assigned Configuration Deletion Guard):** Attempt to delete an assigned configuration (`inUse` non-empty). Verify deletion is blocked with an explanatory dialog and `StillInUse` error handling.
 - **TC-CFG-014 (List Pagination Fleet Scaling):** Ingest more than 500 configurations or profiles. Verify iterative batch ingestion loops collect all records across page boundaries without silent truncation.
 
+---
 
+# Part 5: Properties Module Specification
 
+> [!IMPORTANT]
+> **Delivery status:** Part 5 defines the target Mango Operator UI contract for the Property module. The documentation is intended to merge before the implementation PR so frontend behavior can be reviewed against an approved UI contract. This document does not claim that a listed capability is already available merely because it is specified here; current implementation status is stated in Section 46.
+
+## 36. Property UI Scope and Terminology
+
+This section specifies the Mango Operator UI Property module only. It defines user-visible behavior, frontend routing, component responsibilities, UI-facing data shapes, form behavior, query state, and frontend validation.
+
+Authorization, aggregation, inventory consistency, service-to-service authentication, caching, batching, concurrency, persistence, and downstream implementation are backend concerns and are intentionally outside this UI specification.
+
+| UI term | UI-facing representation |
+|---|---|
+| Property | An authorized Entity-shaped scope displayed as a Property. |
+| Venue | An authorized Venue-shaped scope, including nested Venues. |
+| Device | A Device returned by the scoped Device query for the selected Property or Venue. |
+
+The UI supports these visible relationships:
+
+```text
+Property
+├── Property
+│   └── Venue
+│       └── Venue
+└── Venue
+```
+
+The UI renders only the hierarchy returned by its authenticated data source. It does not invent missing ancestors, expand hidden scopes, or derive authorization in the browser.
+
+## 37. Routes and Component Structure
+
+The application uses hash-based routing. React route paths are:
+
+```text
+/properties
+/properties/:scopeType/:scopeId/:tab
+```
+
+Browser URLs therefore appear as:
+
+```text
+#/properties
+#/properties/property/{id}/overview
+#/properties/venue/{id}/details
+```
+
+Supported workspace tabs are:
+
+| Scope | Tabs |
+|---|---|
+| Property | Overview, Properties & Venues, Devices, Configuration, Details |
+| Venue | Overview, Nested Venues, Devices, Configuration, Details |
+
+The frontend component structure is:
+
+```text
+PropertiesPage
+├── PropertyPortfolio
+│   ├── PropertyHierarchy
+│   └── selected-scope panel
+└── scope workspace
+    ├── ScopeHeader
+    ├── ScopeOverviewTab
+    ├── ScopeChildrenTab
+    ├── ScopeDevicesTab
+    ├── ScopeConfigurationsTab
+    └── ScopeDetailsTab
+        ├── ContactEditorModal
+        ├── LocationEditorModal
+        └── ScopeEditorModal
+```
+
+The selected scope and active tab remain encoded in the URL. Refresh, Back, Forward, breadcrumbs, hierarchy rows, child rows, and Device rows must preserve normal navigation behavior.
+
+## 38. UI Data Dependencies
+
+The Property UI consumes authenticated data through frontend API adapters. This table defines only what the UI needs; it does not prescribe how any backend produces the result.
+
+| UI capability | Hook/adapter | Data expected by the UI | Unavailable behavior |
+|---|---|---|---|
+| Structural hierarchy | `usePropertyTree` | Authorized Property/Venue nodes with recursive children | Full hierarchy error with Retry |
+| Portfolio summaries | `usePropertyPortfolio` | Scope counts and optional operational summaries | Keep hierarchy usable; show status unavailable |
+| Scope overview | `useScopeOverview` | Selected scope summary and direct child summaries | Tab error with Retry |
+| Scoped Devices | `useScopedDevices` | Recursive filtered and paginated Device result | Inventory unavailable with Retry |
+| Scope details | `useScopeDetails` | Editable Property/Venue metadata and associations | Details error with Retry |
+| Contacts | `useScopeContacts`, `useSaveContact` | Records associated with the selected scope | Section error; preserve safe form input |
+| Locations | `useScopeLocations`, `useAvailableVenueLocations`, `useSaveLocation` | Property Locations and eligible Venue Location choices | Section/selector error; preserve safe form input |
+| Configurations | `useScopedConfigurations` | Authorized scope-associated Configuration records | Error or explicit incomplete-list warning |
+| Scope lifecycle | `useCreateScope`, `useUpdateScope`, `useDeleteScope` | Successful record or authoritative error | Preserve input and display the error |
+
+### 38.1 UI-Facing Types
+
+```ts
+type PropertyScopeType = 'property' | 'venue';
+type Availability = 'online' | 'offline' | 'unknown';
+type Health = 'healthy' | 'warning' | 'critical' | 'unknown';
+type OperationalQualityState = 'complete' | 'partial' | 'stale' | 'unavailable';
+
+interface PropertyTreeNode {
+  id: string;
+  type: PropertyScopeType;
+  name: string;
+  children: PropertyTreeNode[];
+  summary?: ScopeSummary;
+}
+
+interface ScopeSummary {
+  totalDevices: number | null;
+  onlineDevices: number | null;
+  offlineDevices: number | null;
+  unknownDevices: number | null;
+  needsAttention: number | null;
+  health: Health;
+  primaryReason?: string;
+}
+
+interface DataQuality {
+  operationalState: OperationalQualityState;
+  asOf?: string;
+  generatedAt?: string;
+}
+
+interface PropertyDevice {
+  serialNumber: string;
+  name: string;
+  description?: string;
+  deviceType?: string;
+  deviceGroup?: string;
+  entityId?: string;
+  entityName?: string;
+  venueId?: string;
+  venueName?: string;
+  availability: Availability;
+  health: Health;
+  connected: boolean;
+  statusKnown: boolean;
+  sanity?: number;
+  ipAddress?: string;
+  firmware?: string;
+  lastContact?: number | string;
+}
+
+interface ScopedDevicesResponse {
+  devices: PropertyDevice[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+  totalPages: number;
+  summary: ScopeSummary;
+  dataQuality: DataQuality;
+}
+```
+
+The hierarchy type intentionally has no Device collection. Legacy payload fields not present in the UI type are ignored during normalization.
+
+Scoped Device traversal is recursive Phase 1 behavior. The UI does not send a direct-versus-descendant option.
+
+`ScopedDevicesResponse` is exclusively a complete-inventory success contract. Every successful response contains the complete filtered result represented through authoritative numeric totals and pagination. The UI has no partial-inventory success state. If the frontend adapter receives an incomplete inventory indication, missing totals or pagination, or a subset that cannot be established as complete, it must reject that response, discard any supplied Device subset, and expose an unavailable query state. The Devices tab then shows Retry and renders no Device table, totals, or pagination.
+
+`operationalState` is independent of inventory completeness. It may be partial, stale, or unavailable after complete Device membership has been established; Devices without current operational evidence are shown as Unknown.
+
+## 39. Portfolio UI
+
+The portfolio page provides:
+
+1. Property, Venue, nested Venue, Device, and health summary cards when values are available.
+2. Search by scope name or identifier.
+3. Property/Venue type filtering.
+4. Health filtering.
+5. Expandable hierarchy rows.
+6. Row selection with a side panel.
+7. Row activation that opens the corresponding Property or Venue workspace.
+8. A tree/map view switch.
+
+The hierarchy remains usable when operational summaries fail. Missing counts render as an em dash, not zero. Unknown status is not displayed as Offline or Healthy.
+
+The map view remains an explicit unavailable state until reliable geospatial data is supplied. It must not plot fabricated coordinates.
+
+The selected-scope panel provides Overview, child scopes, Devices, and Details. Unsupported historical health trends remain visibly unavailable rather than rendering fabricated chart points.
+
+## 40. Scope Workspace UI
+
+### 40.1 Overview
+
+The Overview tab displays:
+
+- Direct child Property and Venue counts.
+- Recursive Device total.
+- Online, Offline, and Unknown values when supplied.
+- Scope health and Needs Attention when supplied.
+- Separate Property, Venue, and Device status cards.
+
+Property health, Venue health, and Device availability are separate concepts. Missing values render as Unknown or unavailable.
+
+### 40.2 Child Scopes
+
+A Property shows direct child Properties and Venues. A Venue shows direct nested Venues.
+
+Rows display the available name, type, health, Device count, Online count, and Offline count. Clicking or keyboard-activating a row opens that child scope; no separate Open button is required.
+
+### 40.3 Devices
+
+The scoped Device query is enabled only when the user opens the Devices tab for a selected Property or Venue. It must not preload Device lists for every node in the portfolio hierarchy. The UI may reuse compatible presentation, actions, and Device-workspace navigation, but must not reuse page-local filtering or Boolean Online/Offline logic. Scoped filtering applies before pagination, and availability is rendered as `online`, `offline`, or `unknown`; missing status is never converted to Offline.
+
+The Devices tab always represents the selected recursive authorized scope and provides:
+
+- Debounced name/serial search.
+- Availability filter.
+- Health filter.
+- Venue filter where options exist.
+- Device-type filter.
+- Zero-based pagination.
+- Refresh.
+- Navigation to the existing Device workspace.
+
+The UI uses the returned total and page information. It does not fetch an arbitrary fixed number of pages and infer the remainder as Offline.
+
+If complete Device inventory cannot be established, the tab discards any returned subset and shows an unavailable state with Retry, no Device rows, no totals, and no pagination. If complete Device membership is available but operational status is partial, affected Devices render as Unknown and a visible warning is shown.
+
+### 40.4 Configuration
+
+The Configuration tab lists authorized Configuration records associated with the selected scope projection.
+
+The UI must:
+
+- distinguish direct and descendant assignments where the data identifies that relationship;
+- avoid fabricating version, category, or Draft/Active/Archived lifecycle values;
+- avoid reconstructing inherited or effective configuration from list records;
+- keep gateway defaults separate from provisioned Configuration assignments; and
+- show an explicit incomplete warning when the current list cannot be confirmed complete.
+
+Management actions navigate to the existing Configuration workspace.
+
+### 40.5 Details
+
+The Details tab provides supported Property/Venue metadata, behavior fields, Contacts, Locations, and notes.
+
+Edit mode must:
+
+- initialize from the latest loaded record;
+- preserve fields and associations not owned by the active form;
+- disable duplicate submission;
+- preserve safe input on error;
+- refresh affected queries on success; and
+- warn before abandoning unsaved changes before Phase 1 completion.
+
+## 41. UI Lifecycle and Forms
+
+### 41.1 Property and Venue
+
+The UI classifies each real Entity before presenting lifecycle actions:
+
+- **Root Property:** the Entity ID is exactly `0000-0000-0000`.
+- **Operator-linked Property:** `operatorId` is non-empty and the Entity is not Root.
+- **Normal Property:** the Entity is neither Root nor Operator-linked.
+- A synthetic hierarchy wrapper is navigation context and is never classified as Root or exposed as a mutable Property.
+
+If the hierarchy response does not contain `operatorId` or other metadata required for classification, the UI loads the selected Entity's authorized detail record before rendering its action controls.
+
+The available controls are determined by both the Entity classification and the current user's permissions:
+
+| Selected scope | Create child Property | Create Venue | Edit metadata | Delete through Properties |
+| --- | --- | --- | --- | --- |
+| Root Property | Show when permitted | Hidden | Show when permitted | Hidden |
+| Operator-linked Property | Show when permitted | Show when permitted | Show when permitted | Hidden |
+| Normal Property | Hidden | Show when permitted | Show when permitted | Show when permitted |
+| Venue | Hidden | Show nested Venue when permitted | Show when permitted | Show when permitted |
+
+The create control opens a contextual form only for an available action:
+
+- A child Property uses Root or an Operator-linked Property as its `parent`.
+- A Venue cannot be created directly under Root. The user must first create a child Property, then create the top-level Venue using that non-Root Property as its `entity`.
+- A nested Venue uses the selected Venue as its `parent`.
+
+The form supports the fields exposed by the current UI: name, description, note, supported behavior fields, and Location where applicable.
+
+Root is never deletable. An Operator-linked Property is not deleted through the Properties module; its lifecycle is handled through Operator administration with authoritative dependency validation. A normal Property or Venue requires explicit confirmation before deletion. The UI does not claim cascading deletion and displays dependency or permission errors returned by the request.
+
+Control visibility is a usability safeguard, not an authorization boundary. OWPROV remains authoritative for RBAC, Entity-type restrictions, Venue-parent restrictions, and dependency validation. The UI must not report success when the service rejects a mutation.
+
+Operator business-object metadata and linked Entity metadata remain independent. Editing either record does not implicitly synchronize its name or other fields.
+
+### 41.2 Contacts
+
+The Contact form supports:
+
+- visual/display name;
+- type;
+- salutation and title;
+- first name, last name, and initials;
+- description;
+- primary and secondary email;
+- phones and mobiles;
+- access PIN; and
+- note where supported.
+
+Required fields are validated before Save is enabled.
+
+### 41.3 Locations
+
+The Location form supports:
+
+- name and description;
+- type;
+- phones and mobiles;
+- timezone;
+- address lines;
+- city, state/province, postal code, and country;
+- building name;
+- geocode; and
+- note where supported.
+
+A Property may show multiple associated Locations. A Venue shows its selected Location and may open the same Create Location form from the Location selector.
+
+### 41.4 Save and Error Behavior
+
+All mutation forms must:
+
+1. prevent duplicate submission;
+2. show pending state;
+3. close only after success;
+4. show the returned validation, permission, conflict, or dependency error;
+5. preserve safe input after failure; and
+6. invalidate the affected hierarchy, details, Contact, Location, or summary query after success.
+
+## 42. Query State and Security-Sensitive UI Behavior
+
+React Query keys identify cached UI data; they are not authorization boundaries.
+
+The authenticated query and mutation cache must be cleared on:
+
+- logout;
+- login or MFA identity change;
+- failed session restoration;
+- invalid or expired authentication;
+- known authorization-context changes; and
+- an authorization-related denial when protected cached data may no longer be readable.
+
+An ordinary permission denial must remove the affected protected UI data without logging out a user whose session remains valid.
+
+Hierarchy and operational summary queries load independently so the navigation structure can remain usable when live status is unavailable.
+
+## 43. UI States and Presentation Rules
+
+Every primary Property view must define:
+
+- initial loading;
+- background refresh;
+- empty;
+- unavailable;
+- permission denied;
+- stale;
+- partial operational status; and
+- mutation failure.
+
+Rules:
+
+1. Unknown must not be displayed as Offline, Healthy, or zero.
+2. Empty is shown only when the returned result is authoritative.
+3. Missing numeric values use an em dash or explicit unavailable label.
+4. Stale values include the supplied timestamp where available.
+5. Partial operational status includes a visible warning.
+6. Error states provide Retry when retry is safe.
+7. Status must not rely on color alone.
+8. Interactive rows and tabs require keyboard activation and visible focus.
+
+## 44. Deferred UI Capabilities
+
+The following remain unavailable or explicitly labeled until suitable data is exposed to the UI:
+
+- historical Property/Venue health and availability trends;
+- a portfolio map with reliable coordinates;
+- Property images;
+- Property owner, manager, and structured type;
+- a persisted primary Contact designation;
+- Configuration version/lifecycle/category when absent;
+- persistent operational issue management;
+- Contact/Location deletion unless separately approved; and
+- interactive Device result sorting; Phase 1 uses the stable default order supplied by the scoped Device data source.
+
+## 45. Frontend Test Requirements
+
+Tests must cover:
+
+- portfolio loading, error, summary-unavailable, search, filters, expansion, selection, and navigation;
+- Venue-only roots without fabricated parent breadcrumbs;
+- route restoration for every scope tab;
+- Property and Venue overview and child-row navigation;
+- Device search/filter/pagination and Device workspace navigation;
+- filtering before pagination, including matches and Unknown Devices across multiple pages;
+- on-demand Device loading only after a scope's Devices tab is selected;
+- rejection of incomplete Device inventory without rendering supplied rows, totals, or pagination;
+- inventory-unavailable Retry behavior;
+- partial operational status rendering Unknown rather than Offline;
+- Property and Venue create/edit/delete success and error behavior;
+- lifecycle action visibility for Root, Operator-linked, and normal Properties, including users without the required permission;
+- Root offering child-Property creation but not direct Venue creation or deletion;
+- Operator-linked Property deletion being absent from the Properties module; and
+- normal Properties offering Venue creation and permitted deletion but not child-Property creation;
+- Contact and Location required fields, payloads, association refresh, and failure preservation;
+- Venue Create Location flow;
+- Configuration incomplete-list warnings and absence of fabricated metadata;
+- authenticated cache clearing across identity and authorization changes;
+- keyboard interaction, focus visibility, responsive layouts, and non-color status labels; and
+- hierarchy normalization that omits legacy Device arrays from the UI model.
+
+Backend unit, integration, authorization, aggregation, database, batching, cache, and load-test requirements belong to their respective service specifications and are not part of this UI document.
+
+## 46. Property UI Delivery Status
+
+The Property UI described in Part 5 is a planned Phase 1 capability to be implemented after this specification is approved. Specification of a route, component, form, or interaction does not claim that it is currently available in the product.
+
+Implementation is complete only after the UI behavior in Sections 36–45 is delivered and the frontend tests in Section 45 pass. Delivery status must be tracked through implementation work rather than inferred from this specification.
+
+## 47. Property UI Definition of Done
+
+1. Only supplied authorized scopes are rendered; missing ancestors are not reconstructed.
+2. Portfolio hierarchy remains usable when operational summaries are unavailable.
+3. Overview and Device tabs represent the same recursive selected scope.
+4. Search, filters, and pagination use the UI data contract without client-side fleet inference.
+5. Unknown, stale, unavailable, and partial operational states cannot be mistaken for Offline, Healthy, empty, or zero.
+6. Property/Venue lifecycle and Contact/Location forms preserve safe data and surface request errors.
+7. Unsupported maps, trends, metadata, and Configuration lifecycle fields are not fabricated.
+8. URL navigation, authenticated cache clearing, accessibility, and responsive behavior pass frontend tests.
+9. The hierarchy UI model contains no Device serial-number collection.
+10. Backend implementation details remain outside this UI specification.
