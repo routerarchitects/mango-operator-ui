@@ -60,7 +60,9 @@ export type IconName =
   | 'activity'
   | 'key'
   | 'arrowUp'
-  | 'network';
+  | 'network'
+  | 'globe'
+  | 'gauge';
 
 interface IconProps {
   name: IconName;
@@ -361,6 +363,12 @@ export const Icon: React.FC<IconProps> = ({ name, size = 20, className, color = 
         <path d="M12 12V8" />
       </>
     ),
+    globe: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      </>
+    ),
     maximize: (
       <>
         <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -411,6 +419,12 @@ export const Icon: React.FC<IconProps> = ({ name, size = 20, className, color = 
         <line x1="9" y1="8" x2="9" y2="16" />
         <line x1="12" y1="7" x2="12" y2="17" />
         <line x1="15" y1="8" x2="15" y2="16" />
+      </>
+    ),
+    gauge: (
+      <>
+        <path d="m12 14 4-4" />
+        <path d="M3.34 19a10 10 0 1 1 17.32 0" />
       </>
     ),
   };
